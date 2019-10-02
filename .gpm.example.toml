@@ -1,0 +1,4 @@
+watchExt=[".go"]
+watchPath=["./"]
+frequency=6
+commands = ["hello","world"]
