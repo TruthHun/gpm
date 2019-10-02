@@ -18,6 +18,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 	"github.com/TruthHun/gpm/conf"
@@ -83,7 +84,8 @@ func initConfig() {
 
 		// Search config in home directory with name ".gpm" (without extension).
 		//viper.AddConfigPath(home)
-		viper.SetConfigFile(".gpm.toml")
+		curPath, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+		viper.SetConfigFile(filepath.Join(curPath, ".gpm.toml"))
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
