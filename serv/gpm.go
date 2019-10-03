@@ -1,9 +1,6 @@
 package serv
 
 import (
-	"bufio"
-	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -16,25 +13,23 @@ import (
 )
 
 var (
-	files     sync.Map
-	ext       sync.Map
-	processes []*os.Process
+	files      = &sync.Map{}
+	filesCount = 0
+	ext        = &sync.Map{}
+	cmd        *exec.Cmd
 )
 
 func Run() {
 	for _, e := range conf.Config.WatchExt {
 		ext.Store(strings.ToLower(e), true)
 	}
-	watch(true)
+	watch()
 }
 
 // 文件少了(删除了)或者多了(新增了)或者发生更改，都要触发
-func watch(isFirst ...bool) {
-	first := false
-	toBuild := false
-	if len(isFirst) > 0 {
-		first = isFirst[0]
-	}
+func watch() {
+	tmpCount := 0
+	sholdRestart := false
 	for _, path := range conf.Config.WatchPath {
 		fs, err := utils.ScanFiles(path)
 		if err != nil {
@@ -46,63 +41,60 @@ func watch(isFirst ...bool) {
 			if !ok {
 				continue
 			}
-			modTime, exist := files.Load(f.Path)
-
-			if !first && !exist { // 出现新增文件，则执行重建工作
-				toBuild = true
+			tmpCount++
+			modTime, ok := files.Load(f.Path)
+			if ok && !f.ModTime.Equal(modTime.(time.Time)) {
+				sholdRestart = true
+				continue
 			}
-			if !first && modTime != nil && !f.ModTime.Equal(modTime.(time.Time)) {
-				toBuild = true
-			}
-			if toBuild {
+			if !ok {
+				sholdRestart = true
 				files.Store(f.Path, f.ModTime)
 			}
 		}
-		if toBuild {
-			break
-		}
 	}
-	if toBuild {
-		go rebuld()
+	if tmpCount != filesCount {
+		filesCount = tmpCount
+		sholdRestart = true
+	}
+	if sholdRestart {
+		go restart()
 	}
 	time.Sleep(time.Duration(conf.Config.Frequency) * time.Millisecond)
 	watch()
 }
 
-func rebuld() {
-	for _, process := range processes {
-		if process != nil {
-			process.Kill()
+func restart() {
+	kill()
+	for _, command := range conf.Config.Commands {
+		if len(command) > 0 {
+			if err := execCommand(command[0], command[1:]...); err != nil {
+				if conf.Config.Strict {
+					break
+				}
+			}
 		}
-	}
-	if len(conf.Config.Commands) > 0 {
-		execCommand(conf.Config.Commands[0], conf.Config.Commands[1:]...)
 	}
 }
 
-func execCommand(commandName string, params ...string) bool {
-	cmd := exec.Command(commandName, params...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatal(err)
-		return false
-	}
+func execCommand(commandName string, params ...string) error {
+	cmd = exec.Command(commandName, params...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
-	cmd.Start()
-
-	processes = append(processes, cmd.Process)
-
-	reader := bufio.NewReader(stdout)
-
-	//实时循环读取输出流中的一行内容
-	for {
-		line, err2 := reader.ReadString('\n')
-		if err2 != nil || io.EOF == err2 {
-			break
+// Kill kills the running command process
+func kill() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Println(e)
 		}
-		fmt.Printf("[%v] %v", time.Now().Local().Format("15:04:05"), line)
+	}()
+	if cmd != nil && cmd.Process != nil {
+		err := cmd.Process.Kill()
+		if err != nil {
+			log.Println(err)
+		}
 	}
-
-	cmd.Wait()
-	return true
 }

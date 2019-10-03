@@ -1,4 +1,7 @@
 watchExt=[".go"]
 watchPath=["./"]
-frequency=6
-commands = ["hello","world"]
+frequency=6000
+strict=true
+commands = [
+    ["go","env"],
+]

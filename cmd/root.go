@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/TruthHun/gpm/conf"
@@ -71,6 +72,7 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	curPath, _ := filepath.Abs(filepath.Dir(os.Args[0]))
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
@@ -84,7 +86,6 @@ func initConfig() {
 
 		// Search config in home directory with name ".gpm" (without extension).
 		//viper.AddConfigPath(home)
-		curPath, _ := filepath.Abs(filepath.Dir(os.Args[0]))
 		viper.SetConfigFile(filepath.Join(curPath, ".gpm.toml"))
 	}
 
@@ -96,10 +97,17 @@ func initConfig() {
 		if _, err = toml.DecodeFile(viper.ConfigFileUsed(), &conf.Config); err != nil {
 			panic(err)
 		}
-		fmt.Printf("Config: %+v", conf.Config)
 		if conf.Config.Frequency <= 0 {
 			conf.Config.Frequency = 5000
 		}
+
+		for idx, path := range conf.Config.WatchPath {
+			path = strings.TrimSpace(path)
+			if !strings.HasPrefix(path, "/") {
+				conf.Config.WatchPath[idx] = filepath.Join(curPath, path)
+			}
+		}
+		fmt.Printf("Config: %+v", conf.Config)
 	} else {
 		panic(err)
 	}
